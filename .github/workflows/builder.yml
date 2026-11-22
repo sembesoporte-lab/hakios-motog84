@@ -29,14 +29,20 @@ jobs:
         run: |
           make -j$(nproc)
 
+      - name: Empaquetar release y buscar binarios
+        run: |
+          chmod +x scripts/release.sh
+          ./scripts/release.sh || true
+          find . -maxdepth 3 -not -path '*/.*'
+
       - name: Subir artefactos compilados
         uses: actions/upload-artifact@v4
         with:
           name: hakios-bangkk-build
           path: |
-            build/**
-            out/**
-            *.bin
-            *.img
-            *.tar*
+            **/*.tar*
+            **/*.efi
+            **/*.bin
+            **/*.img
+            **/*kernel*
           if-no-files-found: warn
