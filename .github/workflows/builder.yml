@@ -1,4 +1,4 @@
-name: Build HakiOS for Moto G84 (bangkk)
+name: Build Flashable boot.img for Moto G84 (bangkk)
 
 on:
   push:
@@ -15,34 +15,51 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Configurar entorno Ubuntu con script oficial
+      - name: Configurar entorno Ubuntu y herramientas de imagen Android
         run: |
           chmod +x scripts/setup-ubuntu.sh
           ./scripts/setup-ubuntu.sh
+          sudo apt-get update
+          sudo apt-get install -y mkbootimg android-sdk-libsparse-utils device-tree-compiler lz4 gzip
 
-      - name: Verificar estado de port para bangkk
-        run: |
-          python3 scripts/phone-ready.py --help || true
-          ls -la
-
-      - name: Compilar Kernel y Loader
+      - name: Compilar Kernel y Loader HakiOS
         run: |
           make -j$(nproc)
-
-      - name: Empaquetar release y buscar binarios
-        run: |
           chmod +x scripts/release.sh
           ./scripts/release.sh || true
-          find . -maxdepth 3 -not -path '*/.*'
 
-      - name: Subir artefactos compilados
+      - name: Localizar kernel compilado y empaquetar boot.img (bangkk)
+        run: |
+          mkdir -p out_flash
+          
+          # Buscar el binario principal del kernel/loader generado por make
+          KERNEL_BIN=$(find . -maxdepth 4 -type f \( -name "*kernel*" -o -name "*.efi" -o -name "*.bin" -o -name "Image*" \) ! -path "./.git/*" ! -path "./scripts/*" | head -n 1)
+          
+          if [ -z "$KERNEL_BIN" ]; then
+            echo "ERROR: No se encontró el binario compilado."
+            find . -maxdepth 3 -not -path '*/.*'
+            exit 1
+          fi
+          
+          echo "Empaquetando binario: $KERNEL_BIN"
+          
+          # Crear un ramdisk vacío válido (gzip) requerido por la estructura boot.img
+          mkdir -p empty_ramdisk
+          (cd empty_ramdisk && find . | cpio -o -H newc | gzip > ../ramdisk.cpio.gz)
+          
+          # Generar el boot.img estándar compatible con Fastboot del Moto G84 (Header v3 / 4096 pagesize)
+          mkbootimg \
+            --kernel "$KERNEL_BIN" \
+            --ramdisk ramdisk.cpio.gz \
+            --header_version 3 \
+            --pagesize 4096 \
+            --cmdline "console=ttyMSM0,115200n8" \
+            -o out_flash/hakios-bangkk-boot.img
+            
+          ls -lh out_flash/hakios-bangkk-boot.img
+
+      - name: Subir hakios-bangkk-boot.img listo para Fastboot
         uses: actions/upload-artifact@v4
         with:
-          name: hakios-bangkk-build
-          path: |
-            **/*.tar*
-            **/*.efi
-            **/*.bin
-            **/*.img
-            **/*kernel*
-          if-no-files-found: warn
+          name: hakios-bangkk-boot-img
+          path: out_flash/hakios-bangkk-boot.img
