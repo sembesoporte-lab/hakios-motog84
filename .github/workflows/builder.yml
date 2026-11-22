@@ -2,7 +2,7 @@ name: Build HakiOS for Moto G84 (bangkk)
 
 on:
   push:
-    branches: [ main ]
+    branches: [ common ]
   workflow_dispatch:
 
 jobs:
@@ -15,21 +15,28 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Instalar dependencias de compilación
+      - name: Configurar entorno Ubuntu con script oficial
         run: |
-          sudo apt-get update
-          sudo apt-get install -y build-essential clang lld llvm cmake ninja-build python3 git device-tree-compiler
+          chmod +x scripts/setup-ubuntu.sh
+          ./scripts/setup-ubuntu.sh
 
-      - name: Compilar Loader y Kernel XNU para bangkk
+      - name: Verificar estado de port para bangkk
         run: |
-          chmod +x build.sh
-          # Ajusta los flags según los scripts del repo que hayas bifurcados
-          ./build.sh --device bangkk
+          python3 scripts/phone-ready.py --help || true
+          ls -la
 
-      - name: Subir artefactos compilados (boot.img / loader)
+      - name: Compilar Kernel y Loader
+        run: |
+          make -j$(nproc)
+
+      - name: Subir artefactos compilados
         uses: actions/upload-artifact@v4
         with:
           name: hakios-bangkk-build
           path: |
-            out/*.img
-            out/*.bin
+            build/**
+            out/**
+            *.bin
+            *.img
+            *.tar*
+          if-no-files-found: warn
